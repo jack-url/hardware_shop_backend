@@ -22,7 +22,7 @@ func Connect() {
 	port := "3306"
 	dbname := "hardware_shop"
 
-	// Build the connection string
+	// Building a  connection 
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true", username, password, host, port, dbname)
 
