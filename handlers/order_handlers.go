@@ -10,19 +10,8 @@ import (
 	"strconv"
 )
 
-// ----------------------- Utility Response Helpers -----------------------
+// ORDER HANDLERS 
 
-func jsonResponse(w http.ResponseWriter, status int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func errorResponse(w http.ResponseWriter, status int, msg string) {
-	jsonResponse(w, status, map[string]string{"error": msg})
-}
-
-// ----------------------- ORDER HANDLERS -----------------------
 
 // POST /orders
 func CreateOrder(w http.ResponseWriter, r *http.Request) {
@@ -37,87 +26,66 @@ func CreateOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := database.DB.Begin()
-	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, "could not start transaction")
+	if order.CustomerID <= 0 {
+		errorResponse(w, http.StatusBadRequest, "invalid customer ID")
 		return
 	}
 
-	// Insert the order
-	res, err := tx.Exec("INSERT INTO orders (customer_id, total, created_at) VALUES (?, ?, NOW())",
-		order.CustomerID, order.Total)
+	//FIXED: Pass actual fields, not struct
+
+	res, err := database.DB.Exec(
+		"INSERT INTO orders (customer_id, total) VALUES (?, ?)",
+		order.CustomerID, order.Total,
+	)
 	if err != nil {
-		tx.Rollback()
-		log.Printf("CreateOrder insert order: %v", err)
+		log.Printf("CreateOrder: %v", err)
 		errorResponse(w, http.StatusInternalServerError, "failed to create order")
 		return
 	}
 
-	orderID, _ := res.LastInsertId()
-
-	// Insert each order item
-	for _, item := range order.Items {
-		_, err := tx.Exec("INSERT INTO order_items (order_id, product_id, quantity, unit_price) VALUES (?, ?, ?, ?)",
-			orderID, item.ProductID, item.Quantity, item.UnitPrice)
-		if err != nil {
-			tx.Rollback()
-			log.Printf("CreateOrder insert item: %v", err)
-			errorResponse(w, http.StatusInternalServerError, "failed to insert order item")
-			return
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		log.Printf("CreateOrder commit: %v", err)
-		errorResponse(w, http.StatusInternalServerError, "failed to commit order")
-		return
-	}
-
-	order.ID = int(orderID)
-	log.Printf("Order created successfully: ID=%d", order.ID)
+	id, _ := res.LastInsertId()
+	order.ID = int(id)
 	jsonResponse(w, http.StatusCreated, order)
 }
 
 // GET /orders
 func GetOrders(w http.ResponseWriter, r *http.Request) {
 	rows, err := database.DB.Query(`
-		SELECT o.id, o.customer_id, c.name, o.total, o.created_at
-		FROM orders o
-		JOIN customers c ON o.customer_id = c.id
-	`)
+SELECT o.id, o.customer_id, c.name, o.total
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+`)
 	if err != nil {
 		log.Printf("GetOrders: %v", err)
-		errorResponse(w, http.StatusInternalServerError, "database query error")
+		errorResponse(w, http.StatusInternalServerError, "database query failed")
 		return
 	}
 	defer rows.Close()
 
 	var orders []map[string]interface{}
 	for rows.Next() {
-		var (
-			id, customerID int
-			customerName   string
-			total          float64
-			createdAt      string
-		)
-		if err := rows.Scan(&id, &customerID, &customerName, &total, &createdAt); err != nil {
-			errorResponse(w, http.StatusInternalServerError, "failed to scan row")
+		var id, customerID int
+		var name string
+		var total float64
+
+		if err := rows.Scan(&id, &customerID, &name, &total); err != nil {
+			errorResponse(w, http.StatusInternalServerError, "scan error")
 			return
 		}
 
-		orders = append(orders, map[string]interface{}{
-			"id":            id,
-			"customer_id":   customerID,
-			"customer_name": customerName,
-			"total":         total,
-			"created_at":    createdAt,
-		})
+		order := map[string]interface{}{
+			"id":          id,
+			"customer_id": customerID,
+			"customer":    name,
+			"total":       total,
+		}
+		orders = append(orders, order)
 	}
 
 	jsonResponse(w, http.StatusOK, orders)
 }
 
-// GET /orders?id=#
+// GET /orders
 func GetOrderByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.URL.Query().Get("id"))
 	if err != nil || id <= 0 {
@@ -126,34 +94,62 @@ func GetOrderByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var order models.Order
-	err = database.DB.QueryRow("SELECT id, customer_id, total, created_at FROM orders WHERE id = ?", id).
-		Scan(&order.ID, &order.CustomerID, &order.Total, &order.CreatedAt)
+	var customerName string
+
+	err = database.DB.QueryRow(`
+SELECT o.id, o.customer_id, c.name, o.total
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+WHERE o.id = ?`, id).Scan(&order.ID, &order.CustomerID, &customerName, &order.Total)
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			errorResponse(w, http.StatusNotFound, "order not found")
 		} else {
-			log.Printf("GetOrderByID: %v", err)
 			errorResponse(w, http.StatusInternalServerError, "database error")
 		}
 		return
 	}
 
-	// Get order items
-	rows, err := database.DB.Query("SELECT id, order_id, product_id, quantity, unit_price FROM order_items WHERE order_id = ?", id)
-	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, "failed to fetch order items")
+	resp := map[string]interface{}{
+		"id":          order.ID,
+		"customer_id": order.CustomerID,
+		"customer":    customerName,
+		"total":       order.Total,
+	}
+
+	jsonResponse(w, http.StatusOK, resp)
+}
+
+// PUT /orders?id=#
+func UpdateOrder(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		errorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	defer rows.Close()
 
-	for rows.Next() {
-		var item models.OrderItem
-		if err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.Quantity, &item.UnitPrice); err == nil {
-			order.Items = append(order.Items, item)
-		}
+	id, err := strconv.Atoi(r.URL.Query().Get("id"))
+	if err != nil || id <= 0 {
+		errorResponse(w, http.StatusBadRequest, "invalid order ID")
+		return
 	}
 
-	jsonResponse(w, http.StatusOK, order)
+	var order models.Order
+	if err := json.NewDecoder(r.Body).Decode(&order); err != nil {
+		errorResponse(w, http.StatusBadRequest, "invalid JSON data")
+		return
+	}
+
+	_, err = database.DB.Exec(
+		"UPDATE orders SET customer_id=?, total=? WHERE id=?",
+		order.CustomerID, order.Total, id,
+	)
+	if err != nil {
+		errorResponse(w, http.StatusInternalServerError, "failed to update order")
+		return
+	}
+
+	jsonResponse(w, http.StatusOK, map[string]string{"message": "order updated"})
 }
 
 // DELETE /orders?id=#
@@ -169,35 +165,17 @@ func DeleteOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx, err := database.DB.Begin()
+	res, err := database.DB.Exec("DELETE FROM orders WHERE id=?", id)
 	if err != nil {
-		errorResponse(w, http.StatusInternalServerError, "could not start transaction")
-		return
-	}
-
-	// Delete items first (foreign key constraint)
-	_, err = tx.Exec("DELETE FROM order_items WHERE order_id = ?", id)
-	if err != nil {
-		tx.Rollback()
-		errorResponse(w, http.StatusInternalServerError, "failed to delete order items")
-		return
-	}
-
-	// Then delete the order
-	res, err := tx.Exec("DELETE FROM orders WHERE id = ?", id)
-	if err != nil {
-		tx.Rollback()
 		errorResponse(w, http.StatusInternalServerError, "failed to delete order")
 		return
 	}
 
-	tx.Commit()
-	rows, _ := res.RowsAffected()
-	if rows == 0 {
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
 		errorResponse(w, http.StatusNotFound, "order not found")
 		return
 	}
 
-	log.Printf("Order deleted: ID=%d", id)
 	jsonResponse(w, http.StatusOK, map[string]string{"message": "order deleted"})
 }

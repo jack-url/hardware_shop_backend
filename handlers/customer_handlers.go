@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// ----------------------- Utility Response Helpers -----------------------
+// Utility Response Helpers 
 
 func jsonResponse(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -23,7 +23,7 @@ func errorResponse(w http.ResponseWriter, status int, msg string) {
 	jsonResponse(w, status, map[string]string{"error": msg})
 }
 
-// ----------------------- CUSTOMER HANDLERS -----------------------
+// CUSTOMER HANDLERS 
 
 // POST /customers
 func CreateCustomer(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +61,7 @@ func CreateCustomer(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /customers
+
 func GetCustomers(w http.ResponseWriter, r *http.Request) {
 	rows, err := database.DB.Query("SELECT id, name, email, phone, address FROM customers")
 	if err != nil {
@@ -85,6 +86,7 @@ func GetCustomers(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /customers?id=#
+
 func GetCustomerByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.URL.Query().Get("id"))
 	if err != nil || id <= 0 {
@@ -109,6 +111,7 @@ func GetCustomerByID(w http.ResponseWriter, r *http.Request) {
 }
 
 // PUT /customers?id=#
+
 func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		errorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -148,6 +151,7 @@ func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 }
 
 // DELETE /customers?id=#
+
 func DeleteCustomer(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodDelete {
 		errorResponse(w, http.StatusMethodNotAllowed, "method not allowed")

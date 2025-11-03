@@ -2,19 +2,13 @@ package routes
 
 import (
 	"hardware_shop_backend/handlers"
-	"log"
 	"net/http"
 )
 
-// SetupRoutes registers all routes for the API calling 
-
+// SetupRoutes configures all API endpoints.
 func SetupRoutes() {
-	log.Println("Setting up routes...")
-
-	// PRODUCT ROUTES 
-
+	// --- Products ---
 	http.HandleFunc("/products", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("📦 %s /products called", r.Method)
 		switch r.Method {
 		case http.MethodGet:
 			id := r.URL.Query().Get("id")
@@ -30,14 +24,13 @@ func SetupRoutes() {
 		case http.MethodDelete:
 			handlers.DeleteProduct(w, r)
 		default:
-			handlers.ErrorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
 
-	// CUSTOMER ROUTES 
-
+	//  Customers 
+	
 	http.HandleFunc("/customers", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("🧍 %s /customers called", r.Method)
 		switch r.Method {
 		case http.MethodGet:
 			id := r.URL.Query().Get("id")
@@ -53,27 +46,7 @@ func SetupRoutes() {
 		case http.MethodDelete:
 			handlers.DeleteCustomer(w, r)
 		default:
-			handlers.ErrorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-
-	// ORDER ROUTES
-	http.HandleFunc("/orders", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf(" %s /orders called", r.Method)
-		switch r.Method {
-		case http.MethodGet:
-			id := r.URL.Query().Get("id")
-			if id != "" {
-				handlers.GetOrderDetails(w, r)
-			} else {
-				handlers.GetOrders(w, r)
-			}
-		case http.MethodPost:
-			handlers.CreateOrder(w, r)
-		default:
-			handlers.ErrorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
-		}
-	})
-
-	log.Println(" Routes setup complete.")
 }
