@@ -42,8 +42,18 @@ func CreateProduct(w http.ResponseWriter, r *http.Request) {
 
 	id, _ := res.LastInsertId()
 	p.ID = int(id)
+
+	// Log the created product
+	log.Printf("Product created: ID=%d, Name=%s, Price=%.2f, Stock=%d", p.ID, p.Name, p.Price, p.Stock)
+
 	jsonResponse(w, http.StatusCreated, p)
 }
+
+	
+
+	
+
+
 
 // GET /products
 func GetProducts(w http.ResponseWriter, r *http.Request) {
@@ -135,6 +145,9 @@ func DeleteProduct(w http.ResponseWriter, r *http.Request) {
 		errorResponse(w, http.StatusNotFound, "product not found")
 		return
 	}
+
+	// Log deleted product
+	log.Printf("Product deleted: ID=%d", id)
 
 	jsonResponse(w, http.StatusOK, map[string]string{"message": "product deleted"})
 }
