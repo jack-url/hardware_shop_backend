@@ -10,6 +10,7 @@ type Product struct {
 }
 
 // Customer who buys products.
+
 type Customer struct {
 	ID      int    `json:"id"`
 	Name    string `json:"name"`
