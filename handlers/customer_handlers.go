@@ -3,7 +3,6 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"hardware_shop_backend/database"
 	"hardware_shop_backend/models"
 	"log"
@@ -12,8 +11,21 @@ import (
 	"strings"
 )
 
-// POST /customers → create a new customer
+// ----------------------- Utility Response Helpers -----------------------
 
+func jsonResponse(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func errorResponse(w http.ResponseWriter, status int, msg string) {
+	jsonResponse(w, status, map[string]string{"error": msg})
+}
+
+// ----------------------- CUSTOMER HANDLERS -----------------------
+
+// POST /customers
 func CreateCustomer(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		errorResponse(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -22,12 +34,11 @@ func CreateCustomer(w http.ResponseWriter, r *http.Request) {
 
 	var c models.Customer
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-		errorResponse(w, http.StatusBadRequest, "invalid JSON")
+		errorResponse(w, http.StatusBadRequest, "invalid JSON data")
 		return
 	}
 
 	c.Name = strings.TrimSpace(c.Name)
-	c.Email = strings.TrimSpace(c.Email)
 	if c.Name == "" || c.Email == "" {
 		errorResponse(w, http.StatusBadRequest, "name and email required")
 		return
@@ -45,15 +56,16 @@ func CreateCustomer(w http.ResponseWriter, r *http.Request) {
 
 	id, _ := res.LastInsertId()
 	c.ID = int(id)
+	log.Printf("Customer created: ID=%d, Name=%s", c.ID, c.Name)
 	jsonResponse(w, http.StatusCreated, c)
 }
 
-// GET /customers → list all customers
+// GET /customers
 func GetCustomers(w http.ResponseWriter, r *http.Request) {
 	rows, err := database.DB.Query("SELECT id, name, email, phone, address FROM customers")
 	if err != nil {
 		log.Printf("GetCustomers: %v", err)
-		errorResponse(w, http.StatusInternalServerError, "database error")
+		errorResponse(w, http.StatusInternalServerError, "database query error")
 		return
 	}
 	defer rows.Close()
@@ -62,6 +74,7 @@ func GetCustomers(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var c models.Customer
 		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &c.Phone, &c.Address); err != nil {
+			log.Printf("GetCustomers scan: %v", err)
 			errorResponse(w, http.StatusInternalServerError, "scan error")
 			return
 		}
@@ -75,20 +88,20 @@ func GetCustomers(w http.ResponseWriter, r *http.Request) {
 func GetCustomerByID(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.URL.Query().Get("id"))
 	if err != nil || id <= 0 {
-		errorResponse(w, http.StatusBadRequest, "invalid id")
+		errorResponse(w, http.StatusBadRequest, "invalid customer ID")
 		return
 	}
 
 	var c models.Customer
-	err = database.DB.QueryRow(
-		"SELECT id, name, email, phone, address FROM customers WHERE id = ?", id,
-	).Scan(&c.ID, &c.Name, &c.Email, &c.Phone, &c.Address)
+	err = database.DB.QueryRow("SELECT id, name, email, phone, address FROM customers WHERE id = ?", id).
+		Scan(&c.ID, &c.Name, &c.Email, &c.Phone, &c.Address)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+		if err == sql.ErrNoRows {
 			errorResponse(w, http.StatusNotFound, "customer not found")
-			return
+		} else {
+			log.Printf("GetCustomerByID: %v", err)
+			errorResponse(w, http.StatusInternalServerError, "database error")
 		}
-		errorResponse(w, http.StatusInternalServerError, "query error")
 		return
 	}
 
@@ -104,20 +117,13 @@ func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.Atoi(r.URL.Query().Get("id"))
 	if err != nil || id <= 0 {
-		errorResponse(w, http.StatusBadRequest, "invalid id")
+		errorResponse(w, http.StatusBadRequest, "invalid customer ID")
 		return
 	}
 
 	var c models.Customer
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-		errorResponse(w, http.StatusBadRequest, "invalid JSON")
-		return
-	}
-
-	c.Name = strings.TrimSpace(c.Name)
-	c.Email = strings.TrimSpace(c.Email)
-	if c.Name == "" || c.Email == "" {
-		errorResponse(w, http.StatusBadRequest, "name and email required")
+		errorResponse(w, http.StatusBadRequest, "invalid JSON data")
 		return
 	}
 
@@ -127,7 +133,7 @@ func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		log.Printf("UpdateCustomer: %v", err)
-		errorResponse(w, http.StatusInternalServerError, "update failed")
+		errorResponse(w, http.StatusInternalServerError, "failed to update customer")
 		return
 	}
 
@@ -137,8 +143,8 @@ func UpdateCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c.ID = id
-	jsonResponse(w, http.StatusOK, c)
+	log.Printf("Customer updated: ID=%d", id)
+	jsonResponse(w, http.StatusOK, map[string]string{"message": "customer updated"})
 }
 
 // DELETE /customers?id=#
@@ -150,14 +156,14 @@ func DeleteCustomer(w http.ResponseWriter, r *http.Request) {
 
 	id, err := strconv.Atoi(r.URL.Query().Get("id"))
 	if err != nil || id <= 0 {
-		errorResponse(w, http.StatusBadRequest, "invalid id")
+		errorResponse(w, http.StatusBadRequest, "invalid customer ID")
 		return
 	}
 
-	res, err := database.DB.Exec("DELETE FROM customers WHERE id=?", id)
+	res, err := database.DB.Exec("DELETE FROM customers WHERE id = ?", id)
 	if err != nil {
 		log.Printf("DeleteCustomer: %v", err)
-		errorResponse(w, http.StatusInternalServerError, "delete failed")
+		errorResponse(w, http.StatusInternalServerError, "failed to delete customer")
 		return
 	}
 
@@ -167,5 +173,6 @@ func DeleteCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonResponse(w, http.StatusOK, map[string]string{"deleted": "ok"})
+	log.Printf("Customer deleted: ID=%d", id)
+	jsonResponse(w, http.StatusOK, map[string]string{"message": "customer deleted"})
 }

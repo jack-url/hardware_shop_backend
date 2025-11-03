@@ -10,7 +10,7 @@ import (
 
 var DB *sql.DB
 
-// Connect initializes and verifies the MySQL connection
+// Connect initializes and verify  mysql connection
 func Connect() {
 	var err error
 
