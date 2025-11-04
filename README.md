@@ -102,15 +102,11 @@ json
 }
 ➕ Create Order
 json
-
-
   {
   "customer_id": 1,
   "total": 1200.50,
   "created_at": "2025-11-04T10:15:00Z"
 }
-
-
  How to Test
  Using Postman
 Open Postman
