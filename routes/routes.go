@@ -6,6 +6,7 @@ import (
 )
 
 // SetupRoutes configures all API endpoints.
+
 func SetupRoutes() {
 	// --- Products ---
 	http.HandleFunc("/products", func(w http.ResponseWriter, r *http.Request) {
@@ -28,8 +29,7 @@ func SetupRoutes() {
 		}
 	})
 
-	//  Customers 
-	
+	// --- Customers ---
 	http.HandleFunc("/customers", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -45,6 +45,27 @@ func SetupRoutes() {
 			handlers.UpdateCustomer(w, r)
 		case http.MethodDelete:
 			handlers.DeleteCustomer(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// --- Orders ---
+	http.HandleFunc("/orders", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			id := r.URL.Query().Get("id")
+			if id != "" {
+				handlers.GetOrderByID(w, r)
+			} else {
+				handlers.GetOrders(w, r)
+			}
+		case http.MethodPost:
+			handlers.CreateOrder(w, r)
+		case http.MethodPut:
+			handlers.UpdateOrder(w, r)
+		case http.MethodDelete:
+			handlers.DeleteOrder(w, r)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
