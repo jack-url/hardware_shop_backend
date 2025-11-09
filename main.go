@@ -6,29 +6,35 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
 	log.Println("Starting Hardware Shop Backend Server...")
 
-	// Connect to MySQL database
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using system environment variables")
+	}
+
+	// Connect to MySQL database (reads from env variables)
 	database.Connect()
 
-	// Set up routes (Products, Customers, Orders)
+	// Set up routes
 	routes.SetupRoutes()
 
 	// Define server port (default 8080)
-	port := ":8080"
-	if fromEnv := os.Getenv("PORT"); fromEnv != "" {
-		port = ":" + fromEnv
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
 
-	log.Printf("Server running on http://localhost%s", port)
+	log.Printf("Server running on http://localhost:%s", port)
 	log.Println("Press CTRL+C to stop the server.")
 
 	// Start the server
-	err := http.ListenAndServe(port, nil)
-	if err != nil {
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

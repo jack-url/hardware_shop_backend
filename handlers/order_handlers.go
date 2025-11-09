@@ -179,3 +179,4 @@ func DeleteOrder(w http.ResponseWriter, r *http.Request) {
 
 	jsonResponse(w, http.StatusOK, map[string]string{"message": "order deleted"})
 }
+
